@@ -23,11 +23,14 @@ slider_height = 20
 slider_min_rays = 10
 slider_max_rays = 800
 slider_value = 10
+slider_target_value = 150
+slider_duration = 5.0
+elapsed_time = 0.0
 
 # Spielerattribute
 player_x = 64  # Startet in der Mitte der Kachel (1, 1)
 player_y = 64  # Kachel (1, 1)
-player_angle = 0  # Startet in Richtung 0 Grad (rechts)
+player_angle = math.pi / 5  # Startet in Richtung 0 Grad (rechts)
 player_speed = 120  # Geschwindigkeit in Pixeln pro Sekunde (nicht pro Frame)
 rotation_speed = 2  # Drehgeschwindigkeit auf 20% reduziert (vorher 120)
 
@@ -240,6 +243,13 @@ running = True
 
 while running:
     dt = clock.tick(60) / 1000.0  # Delta Time in Sekunden
+    elapsed_time += dt  # Aktualisiert die verstrichene Zeit
+
+    # Berechne den Sliderwert basierend auf der Zeit (langsamer Anstieg)
+    if slider_value < slider_target_value:
+        # Berechne, wie viel der Slider innerhalb des Zeitintervalls ansteigen sollte
+        slider_value = min(slider_target_value, 10 + (elapsed_time / slider_duration) * (slider_target_value - 10))
+
     screen.fill(BLACK)
 
     # Ereignisverarbeitung
@@ -247,7 +257,7 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
-        # Slidersteuerung
+        # Slidersteuerung (manuelle Anpassung mit Maus, falls notwendig)
         if event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.MOUSEMOTION:
             if pygame.mouse.get_pressed()[0]:  # Linke Maustaste gedrückt
                 mouse_x, _ = pygame.mouse.get_pos()
@@ -268,11 +278,11 @@ while running:
     # Projiziere den Würfel auf dem Boden
     #project_cube_on_floor()
 
-    # Strahlen werfen (Raycasting)
-    cast_rays(slider_value)
+    # Strahlen werfen (Raycasting) basierend auf dem aktuellen slider_value
+    cast_rays(int(slider_value))
 
     # Zeichne den Slider
-    draw_slider(slider_value)
+    draw_slider(int(slider_value))
 
     # FPS-Zähler anzeigen
     fps = int(clock.get_fps())
