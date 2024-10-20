@@ -34,6 +34,16 @@ player_angle = math.pi / 5  # Startet in Richtung 36 Grad (10% von 360 Grad)
 player_speed = 120  # Geschwindigkeit in Pixeln pro Sekunde (nicht pro Frame)
 rotation_speed = 2  # Drehgeschwindigkeit
 
+# Angriff (Slash) Variablen
+is_attacking = False  # Status, ob der Spieler gerade angreift
+attack_duration = 0.2  # Dauer des Angriffs (in Sekunden)
+attack_time = 0  # Zeit, zu der der Angriff gestartet wurde
+# Blink-Variablen für den Gegner
+enemy_blinking = False  # Ob der Gegner gerade blinkt
+enemy_blink_duration = 0.5  # Dauer des Blinkens (in Sekunden)
+enemy_blink_time = 0  # Zeit, zu der das Blinken gestartet wurde
+
+
 # Labyrinth (1 = Wand, 0 = leerer Raum)
 maze = [
     [1, 1, 1, 1, 1, 1, 1, 1],
@@ -116,9 +126,10 @@ def move_player(dt):
     new_y = player_y + move_y
 
     # Nur bewegen, wenn keine Kollision mit einer Wand und mit dem Gegner
-    if not check_wall_collision(new_x, new_y) and not check_enemy_collision(new_x, new_y, enemy_pos):
+    if not check_wall_collision(new_x, new_y) and not check_movement_collision(new_x, new_y, enemy_pos):
         player_x = new_x
         player_y = new_y
+
 
 
 # Funktion zum Zeichnen des Sliders
@@ -158,6 +169,9 @@ def can_see_object(object_pos):
 
     return True
 def project_enemy_on_screen():
+    global enemy_blinking
+    current_time = pygame.time.get_ticks() / 1000.0  # Aktuelle Zeit in Sekunden
+
     # Berechne den Abstand zum Spieler
     dx = enemy_pos["x"] - player_x
     dy = enemy_pos["y"] - player_y
@@ -184,25 +198,78 @@ def project_enemy_on_screen():
 
         # Perspektivische Skalierung des Gegners basierend auf der Entfernung
         enemy_size = TILE_SIZE / distance * 300
-
-        # Begrenzung der Größe des Gegners (nicht zu klein oder zu groß)
         enemy_size = max(10, min(enemy_size, HEIGHT))
 
-        # Zeichne den Gegner auf dem Bildschirm
+        # Blinken überprüfen
+        if enemy_blinking and current_time - enemy_blink_time < enemy_blink_duration:
+            color = WHITE  # Blinkfarbe
+            print("Gegner blinkt!")
+        else:
+            color = RED  # Normale Farbe
+            if enemy_blinking:
+                print("Blinken beendet")
+            enemy_blinking = False  # Blinken beenden
+
+        # Zeichne den Gegner (ein "B" in der berechneten Farbe)
         font = pygame.font.SysFont(None, int(enemy_size))
-        text = font.render("B", True, RED)  # Ein "B" für den Gegner
+        text = font.render("B", True, color)
         text_rect = text.get_rect(center=(projected_x, HEIGHT // 2))
         screen.blit(text, text_rect)
-def check_enemy_collision(new_x, new_y, enemy_pos):
+
+
+def check_movement_collision(new_x, new_y, enemy_pos):
     # Berechne den Abstand zwischen dem Spieler und dem Gegner
     dx = enemy_pos["x"] - new_x
     dy = enemy_pos["y"] - new_y
     distance = math.sqrt(dx ** 2 + dy ** 2)
 
-    # Der Spieler darf sich dem Gegner nicht mehr als eine bestimmte Distanz nähern (z.B. TILE_SIZE / 2)
-    if distance < TILE_SIZE / 2:
-        return True  # Kollision mit dem Gegner
+    # Bewegungseinschränkung - der Spieler darf nicht zu nah am Gegner sein
+    if distance < TILE_SIZE / 2:  # Engere Reichweite für Bewegung
+        return True  # Kollision mit dem Gegner, Bewegung blockieren
     return False
+
+def check_attack_range(player_x, player_y, enemy_pos):
+    # Berechne den Abstand zwischen dem Spieler und dem Gegner
+    dx = enemy_pos["x"] - player_x
+    dy = enemy_pos["y"] - player_y
+    distance = math.sqrt(dx ** 2 + dy ** 2)
+
+    # Angriffsreichweite - diese kann größer sein
+    if distance < TILE_SIZE * 1.5:  # Erhöhte Reichweite für den Angriff
+        return True  # Spieler ist nah genug, um anzugreifen
+    return False
+
+
+
+def attack():
+    global is_attacking, enemy_blinking, enemy_blink_time
+    current_time = pygame.time.get_ticks() / 1000.0  # Aktuelle Zeit in Sekunden
+
+    if is_attacking:
+        # Berechne, ob der Angriff noch läuft (Attackdauer von 0.2 Sekunden)
+        if current_time - attack_time < attack_duration:
+            # Linie wird von oben rechts nach unten links gezeichnet
+            line_start = (WIDTH, 0)
+            line_end = (0, HEIGHT)
+            
+            # Mehrere Liniensegmente zeichnen (wie zuvor beschrieben)
+            for i in range(15):
+                t = i / 14
+                thickness = int(5 + 20 * math.sin(t * math.pi))
+                segment_start = (int(WIDTH - t * WIDTH), int(t * HEIGHT))
+                segment_end = (int(WIDTH - (t + 1 / 14) * WIDTH), int((t + 1 / 14) * HEIGHT))
+                pygame.draw.line(screen, WHITE, segment_start, segment_end, thickness)
+            # Überprüfen, ob der Spieler den Gegner berührt und angreift
+        if check_attack_range(player_x, player_y, enemy_pos) and is_attacking:
+            enemy_blinking = True  # Gegner blinkt
+            print("Angriff trifft Gegner!")
+            enemy_blink_time = current_time  # Zeitpunkt des Blinkens speichern
+        else:
+            is_attacking = False
+
+
+            # Angriff beenden, wenn die Zeit abgelaufen ist
+            
 
 
 
@@ -239,6 +306,10 @@ while running:
         player_angle += rotation_speed * dt  # Drehung abhängig von Delta Time (dt)
     if keys[pygame.K_UP]:
         move_player(dt)
+    if keys[pygame.K_SPACE] and not is_attacking:
+        is_attacking = True
+        attack_time = pygame.time.get_ticks() / 1000.0  # Angriff starten, aktuelle Zeit speichern
+
 
     # Zeichne den Boden (horizontale Linien)
     draw_horizontal_lines()
@@ -250,6 +321,7 @@ while running:
     project_enemy_on_screen()
     # Zeichne den Slider
     draw_slider(int(slider_value))
+    attack()
 
     # FPS-Zähler anzeigen
     fps = int(clock.get_fps())
