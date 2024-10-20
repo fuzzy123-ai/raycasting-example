@@ -30,9 +30,9 @@ elapsed_time = 0.0
 # Spielerattribute
 player_x = 64  # Startet in der Mitte der Kachel (1, 1)
 player_y = 64  # Kachel (1, 1)
-player_angle = math.pi / 5  # Startet in Richtung 0 Grad (rechts)
+player_angle = math.pi / 5  # Startet in Richtung 36 Grad (10% von 360 Grad)
 player_speed = 120  # Geschwindigkeit in Pixeln pro Sekunde (nicht pro Frame)
-rotation_speed = 2  # Drehgeschwindigkeit auf 20% reduziert (vorher 120)
+rotation_speed = 2  # Drehgeschwindigkeit
 
 # Labyrinth (1 = Wand, 0 = leerer Raum)
 maze = [
@@ -115,10 +115,11 @@ def move_player(dt):
     new_x = player_x + move_x
     new_y = player_y + move_y
 
-    # Nur bewegen, wenn keine Kollision mit einer Wand
-    if not check_wall_collision(new_x, new_y):
+    # Nur bewegen, wenn keine Kollision mit einer Wand und mit dem Gegner
+    if not check_wall_collision(new_x, new_y) and not check_enemy_collision(new_x, new_y, enemy_pos):
         player_x = new_x
         player_y = new_y
+
 
 # Funktion zum Zeichnen des Sliders
 def draw_slider(value):
@@ -136,13 +137,12 @@ def get_slider_value(mouse_x):
         value = slider_min_rays + (mouse_x - slider_x) / slider_width * (slider_max_rays - slider_min_rays)
         return int(value)
     return slider_value
-
-def can_see_cube(cube_pos):
-    dx = cube_pos["x"] - player_x
-    dy = cube_pos["y"] - player_y
+def can_see_object(object_pos):
+    dx = object_pos["x"] - player_x
+    dy = object_pos["y"] - player_y
     distance = math.sqrt(dx ** 2 + dy ** 2)
 
-    steps = int(distance / TILE_SIZE * 10)  # Verfeinerte Schritte zur genaueren Prüfung
+    steps = int(distance / TILE_SIZE * 10)  # Feinere Schritte zur genauen Prüfung
     step_x = dx / steps
     step_y = dy / steps
 
@@ -157,84 +157,52 @@ def can_see_cube(cube_pos):
             return False
 
     return True
-# Funktion zur Projektion eines Würfels
-def project_cube():
-    # Würfelgröße (30x30 Pixel) und Position
-    cube_size = 30
-    cube_pos = {"x": 6 * TILE_SIZE, "y": 6 * TILE_SIZE}  # Position des Würfels auf Kachel (6, 6)
-
+def project_enemy_on_screen():
     # Berechne den Abstand zum Spieler
-    dx = cube_pos["x"] - player_x
-    dy = cube_pos["y"] - player_y
+    dx = enemy_pos["x"] - player_x
+    dy = enemy_pos["y"] - player_y
     distance = math.sqrt(dx ** 2 + dy ** 2)
 
-    # Verhindere das Rendern, wenn der Würfel zu nah oder zu weit weg ist
+    # Verhindere das Rendern, wenn der Gegner zu nah oder zu weit weg ist
     if distance < TILE_SIZE / 2 or distance > 800:
         return
     
-    # Prüfe, ob der Spieler den Würfel sehen kann (Sichtlinie frei von Wänden)
-    if not can_see_cube(cube_pos):
+    # Prüfe, ob der Spieler den Gegner sehen kann (Sichtlinie frei von Wänden)
+    if not can_see_object(enemy_pos):
         return
-    
-    # Winkel zwischen Spieler und Würfel
-    angle_to_cube = math.atan2(dy, dx)
-    angle_diff = angle_to_cube - player_angle
+
+    # Berechne den Winkel zwischen Spieler und Gegner
+    angle_to_enemy = math.atan2(dy, dx)
+    angle_diff = angle_to_enemy - player_angle
 
     # Normalisierung des Winkels, damit er zwischen -π und π liegt
     angle_diff = (angle_diff + math.pi) % (2 * math.pi) - math.pi
 
-    # Würfel wird nur gerendert, wenn er im erweiterten Sichtfeld (90 Grad) ist
+    # Gegner wird nur gerendert, wenn er im Sichtfeld (90 Grad) ist
     if -math.pi / 4 < angle_diff < math.pi / 4:
-        # Berechne die projizierte Position auf dem Bildschirm basierend auf dem Winkel
         projected_x = (WIDTH / 2) + math.tan(angle_diff) * (WIDTH / 2)
-        cube_proj_size = cube_size / distance * 200  # Skalierung des Würfels basierend auf der Entfernung
-        
-        # Verhindere, dass der Würfel zu klein oder zu groß wird
-        cube_proj_size = max(5, min(cube_proj_size, cube_size))
-        
-        # Zeichne den Würfel auf den Boden, projiziert auf den Bildschirm
-        pygame.draw.rect(screen, WHITE, 
-                         (projected_x - cube_proj_size // 2, HEIGHT // 2 + 50, cube_proj_size, cube_proj_size))
-# Funktion zur Projektion eines Würfels auf dem Boden
-# Funktion zur Projektion eines Würfels auf dem Boden
-def project_cube_on_floor():
-    # Würfelgröße (30x30 Pixel) und Position
-    cube_size = 30
-    cube_pos = {"x": 6 * TILE_SIZE, "y": 6 * TILE_SIZE}  # Position des Würfels auf Kachel (6, 6)
 
-    # Berechne den Abstand zum Spieler
-    dx = cube_pos["x"] - player_x
-    dy = cube_pos["y"] - player_y
+        # Perspektivische Skalierung des Gegners basierend auf der Entfernung
+        enemy_size = TILE_SIZE / distance * 300
+
+        # Begrenzung der Größe des Gegners (nicht zu klein oder zu groß)
+        enemy_size = max(10, min(enemy_size, HEIGHT))
+
+        # Zeichne den Gegner auf dem Bildschirm
+        font = pygame.font.SysFont(None, int(enemy_size))
+        text = font.render("B", True, RED)  # Ein "B" für den Gegner
+        text_rect = text.get_rect(center=(projected_x, HEIGHT // 2))
+        screen.blit(text, text_rect)
+def check_enemy_collision(new_x, new_y, enemy_pos):
+    # Berechne den Abstand zwischen dem Spieler und dem Gegner
+    dx = enemy_pos["x"] - new_x
+    dy = enemy_pos["y"] - new_y
     distance = math.sqrt(dx ** 2 + dy ** 2)
 
-    # Verhindere das Rendern, wenn der Würfel zu nah oder zu weit weg ist
-    if distance < TILE_SIZE / 2 or distance > 800:
-        return
-    
-    # Prüfe, ob der Spieler den Würfel sehen kann (Sichtlinie frei von Wänden)
-    if not can_see_cube(cube_pos):
-        return
-    
-    # Winkel zwischen Spieler und Würfel
-    angle_to_cube = math.atan2(dy, dx)
-    angle_diff = angle_to_cube - player_angle
-
-    # Normalisierung des Winkels, damit er zwischen -π und π liegt
-    angle_diff = (angle_diff + math.pi) % (2 * math.pi) - math.pi
-
-    # Würfel wird nur gerendert, wenn er im erweiterten Sichtfeld (90 Grad) ist
-    if -math.pi / 4 < angle_diff < math.pi / 4:
-        # Berechne die projizierte Position auf dem Bildschirm basierend auf dem Winkel
-        projected_x = (WIDTH / 2) + math.tan(angle_diff) * (WIDTH / 2)
-        cube_proj_size = cube_size / distance * 200  # Skalierung des Würfels basierend auf der Entfernung
-        
-        # Verhindere, dass der Würfel zu klein oder zu groß wird
-        cube_proj_size = max(5, min(cube_proj_size, cube_size))
-        
-        # Zeichne den Würfel am Boden, projiziert auf den Bildschirm (am unteren Rand der Mitte)
-        pygame.draw.rect(screen, WHITE, 
-                         (projected_x - cube_proj_size // 2, HEIGHT // 2 + 100 - cube_proj_size, 
-                          cube_proj_size, cube_proj_size))
+    # Der Spieler darf sich dem Gegner nicht mehr als eine bestimmte Distanz nähern (z.B. TILE_SIZE / 2)
+    if distance < TILE_SIZE / 2:
+        return True  # Kollision mit dem Gegner
+    return False
 
 
 
@@ -275,12 +243,11 @@ while running:
     # Zeichne den Boden (horizontale Linien)
     draw_horizontal_lines()
 
-    # Projiziere den Würfel auf dem Boden
-    #project_cube_on_floor()
 
     # Strahlen werfen (Raycasting) basierend auf dem aktuellen slider_value
     cast_rays(int(slider_value))
-
+    # Projiziere den Gegner auf den Bildschirm
+    project_enemy_on_screen()
     # Zeichne den Slider
     draw_slider(int(slider_value))
 
@@ -291,3 +258,4 @@ while running:
 
     pygame.display.flip()
 
+pygame.quit()
